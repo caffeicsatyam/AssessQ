@@ -1,0 +1,82 @@
+# Sample Conversation Analysis — Gaps vs. Current Agent
+
+## Key Behavioral Patterns from C1–C10
+
+### 1. Clarification: Agent can ask **multiple** clarifying questions (not just one)
+| Conv | Clarifying turns before first recommendation |
+|------|---------------------------------------------|
+| C1   | 2 turns (Turn 1 + Turn 2 both ask questions) |
+| C2   | 1 turn |
+| C3   | **2 turns** (language → then accent variant) |
+| C4   | 0 turns (enough context on turn 1) |
+| C5   | 0 turns |
+| C6   | 0 turns |
+| C7   | 1 turn |
+| C8   | 0 turns |
+| C9   | **2 turns** (backend vs frontend → then IC vs lead) |
+| C10  | 0 turns |
+
+> [!IMPORTANT]
+> **Current prompt says "Ask at most ONE clarifying question across the entire conversation."**
+> But C1, C3, and C9 show the agent asking **2** clarifying questions before recommending.
+> This is a major mismatch. The prompt should allow up to 2 questions.
+
+### 2. `end_of_conversation` — only `true` on the FINAL confirmation turn
+Every conversation follows this exact pattern:
+- Agent recommends → `end_of_conversation: false`
+- User confirms ("Perfect", "That covers it", "Locking it in") → Agent repeats shortlist → `end_of_conversation: true`
+
+> [!IMPORTANT]
+> **Current agent.py sets `end_of_conversation = true` whenever there are recs AND past turn 1.**
+> This is too aggressive. The sample conversations show that `end_of_conversation` should ONLY be `true` when the **user explicitly confirms** the shortlist. The first time recommendations appear, it should always be `false`.
+
+### 3. Recommendations must be **repeated in the final confirmation turn**
+In C1–C10, the final "confirmed" turn always includes the full recommendation table again, not just a text reply. This is the expected behavior.
+
+### 4. Comparison responses include **no recommendations** (empty array)
+- C3 Turn 4: Comparison between simulations → `recommendations: null`
+- C5 Turn 2: OPQ vs OPQ MQ Sales Report → recommendations **kept** (but this is because agent answered AND maintained list)
+- C6 Turn 2: DSI vs Safety 8.0 → `recommendations: null`
+
+> [!NOTE]
+> Our comparison detection and empty-rec behavior is correct.
+
+### 5. Refusal of out-of-scope questions — no recommendations, no end
+- C7 Turn 3: Legal question → Agent refuses, no recs, `end_of_conversation: false`
+- This is already handled by the system prompt.
+
+### 6. Refinement preserves context and updates the list
+- C4 Turn 2: "Also add situational judgement" → Agent adds Graduate Scenarios to existing list
+- C8 Turn 2: "Add simulation" → Agent adds simulation to existing list  
+- C9 Turn 4: "Add AWS/Docker, drop REST" → Agent swaps items
+- C10 Turn 4: "Drop OPQ" → Agent removes item from list
+
+### 7. Reply tone — expert consultant, not robotic
+The sample agent speaks like a domain expert:
+- Explains **why** certain assessments fit
+- Proactively includes OPQ32r as a default personality measure
+- Offers trade-offs ("If you want a leaner shortlist, dropping Verify G+ is valid")
+- Acknowledges catalog limitations ("SHL doesn't have a Rust test")
+
+> [!NOTE]
+> Current `reply` limit of 80 words is too restrictive for this level of depth.
+> Sample replies regularly exceed 80 words. C9 Turn 6 reply is ~90 words.
+
+### 8. Table format includes **Keys, Duration, Languages** — not just name/type/URL
+The sample tables have 7 columns:
+```
+| # | Name | Test Type | Keys | Duration | Languages | URL |
+```
+Our prompt only asks for a simpler table. Should match the sample format.
+
+---
+
+## Critical Gaps to Fix
+
+| # | Issue | Current | Should Be | Fix Location |
+|---|-------|---------|-----------|-------------|
+| 1 | **Max clarifying questions** | "At most ONE" | Allow up to 2 | `prompts.py` |
+| 2 | **`end_of_conversation` logic** | True when recs exist AND past turn 1 | True ONLY on explicit user confirmation after seeing recs | `agent.py` |
+| 3 | **Reply word limit** | 80 words | Remove or raise to ~150 | `prompts.py` |
+| 4 | **Table format** | 6 columns | 7 columns (add Keys, Languages) | `prompts.py` |
+| 5 | **Recommendations on comparison turns** | Some comparisons re-include recs | Keep recs in response if previous shortlist exists | `agent.py` |

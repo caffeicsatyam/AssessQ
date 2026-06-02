@@ -1,0 +1,37 @@
+# ─── Core RAG ─────────────────────────────────────────────
+langchain
+langchain-community
+langchain-text-splitters
+
+# ─── Embeddings & Reranking ───────────────────────────────
+sentence-transformers
+transformers
+torch
+
+# ─── Vector Store ─────────────────────────────────────────
+chromadb
+
+# ─── Sparse Retrieval ─────────────────────────────────────
+rank-bm25
+
+# ─── LLM Providers ────────────────────────────────────────
+openai
+groq
+
+# ─── Streamlit UI ─────────────────────────────────────────
+streamlit
+
+# ─── Utilities ────────────────────────────────────────────
+python-dotenv
+tiktoken
+numpy
+pandas
+tqdm
+
+# ─── GraphRAG Specific ────────────────────────────────────
+# NER for entity extraction
+spacy
+# After installing, run: python -m spacy download en_core_web_sm
+
+# Knowledge graph construction & community detection
+networkx
