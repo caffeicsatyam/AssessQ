@@ -1,27 +1,22 @@
 import re
+import uuid
 from collections import Counter
 from typing import Iterable, List, Optional
 
 import pandas as pd
 import streamlit as st
-from agent import AssessmentRecommender
-from agent import  TEST_TYPE_LABELS, format_table, load_catalog
 
+from agent import (
+    AssessmentRecommender,
+    ConversationalRecommender,
+    TEST_TYPE_LABELS,
+    format_table,
+    load_catalog,
+)
 
+# ── regex helpers (still used for lightweight shortlist ops) ──────────────────
 CONFIRMATION_RE = re.compile(
     r"\b(perfect|looks good|that covers it|lock|locking|final|done|yes|correct|great)\b",
-    re.IGNORECASE,
-)
-REPLACE_RE = re.compile(
-    r"\breplace\s+(.+?)\s+with\s+(.+)$",
-    re.IGNORECASE,
-)
-DROP_RE = re.compile(
-    r"\b(?:drop|remove|exclude|skip)\s+(.+?)(?=\b(?:and\s+)?(?:add|include|replace|with)\b|$)",
-    re.IGNORECASE,
-)
-ADD_RE = re.compile(
-    r"\b(?:add|include)\s+(.+?)(?=\b(?:and\s+)?(?:drop|remove|exclude|skip|replace)\b|$)",
     re.IGNORECASE,
 )
 SMALL_TALK_RE = re.compile(
@@ -29,7 +24,7 @@ SMALL_TALK_RE = re.compile(
     re.IGNORECASE,
 )
 
-
+# ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AssessQ",
     page_icon="AQ",
@@ -41,89 +36,49 @@ st.markdown(
     """
 <style>
     .main-header {
-        font-size: 2rem;
-        font-weight: 750;
+        font-size: 2rem; font-weight: 750;
         background: linear-gradient(135deg, #0f766e 0%, #2563eb 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         margin-bottom: 0.1rem;
     }
-    .subtitle {
-        color: #64748b;
-        font-size: 0.95rem;
-        margin-bottom: 1.2rem;
-    }
+    .subtitle { color: #64748b; font-size: 0.95rem; margin-bottom: 1.2rem; }
     .stat-box {
         background: linear-gradient(135deg, #f0fdfa, #eff6ff);
-        border: 1px solid #ccfbf1;
-        border-radius: 10px;
-        padding: 0.9rem;
-        text-align: center;
+        border: 1px solid #ccfbf1; border-radius: 10px;
+        padding: 0.9rem; text-align: center;
     }
-    .stat-number {
-        font-size: 1.45rem;
-        font-weight: 750;
-        color: #0f766e;
-    }
-    .stat-label {
-        font-size: 0.78rem;
-        color: #64748b;
-    }
+    .stat-number { font-size: 1.45rem; font-weight: 750; color: #0f766e; }
+    .stat-label  { font-size: 0.78rem; color: #64748b; }
     .hint-box {
-        background: #f8fafc;
-        border-left: 3px solid #2563eb;
-        padding: 0.75rem 1rem;
-        border-radius: 0 8px 8px 0;
-        color: #334155;
-        font-size: 0.9rem;
-        margin-bottom: 0.7rem;
+        background: #f8fafc; border-left: 3px solid #2563eb;
+        padding: 0.75rem 1rem; border-radius: 0 8px 8px 0;
+        color: #334155; font-size: 0.9rem; margin-bottom: 0.7rem;
     }
     .result-box {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 0.9rem 1rem;
-        margin-bottom: 0.65rem;
+        background: #ffffff; border: 1px solid #e2e8f0;
+        border-radius: 8px; padding: 0.9rem 1rem; margin-bottom: 0.65rem;
     }
-    .result-title {
-        font-weight: 700;
-        color: #0f172a;
-        margin-bottom: 0.25rem;
-    }
-    .meta-line {
-        color: #64748b;
-        font-size: 0.83rem;
-        margin-bottom: 0.45rem;
-    }
+    .result-title  { font-weight: 700; color: #0f172a; margin-bottom: 0.25rem; }
+    .meta-line     { color: #64748b; font-size: 0.83rem; margin-bottom: 0.45rem; }
     .type-chip {
-        display: inline-block;
-        background: #0f766e22;
-        color: #0f766e;
-        border-radius: 8px;
-        padding: 1px 8px;
-        font-size: 0.72rem;
-        font-weight: 650;
-        margin: 2px 4px 2px 0;
+        display: inline-block; background: #0f766e22; color: #0f766e;
+        border-radius: 8px; padding: 1px 8px; font-size: 0.72rem;
+        font-weight: 650; margin: 2px 4px 2px 0;
     }
     .source-chip {
-        display: inline-block;
-        background: #2563eb22;
-        color: #2563eb;
-        border-radius: 8px;
-        padding: 1px 8px;
-        font-size: 0.72rem;
-        font-weight: 650;
-        margin-right: 4px;
+        display: inline-block; background: #2563eb22; color: #2563eb;
+        border-radius: 8px; padding: 1px 8px; font-size: 0.72rem;
+        font-weight: 650; margin-right: 4px;
     }
     .shortlist-chip {
-        display: inline-block;
-        background: #f59e0b22;
-        color: #b45309;
-        border-radius: 8px;
-        padding: 2px 9px;
-        font-size: 0.76rem;
-        font-weight: 650;
-        margin: 2px 4px 2px 0;
+        display: inline-block; background: #f59e0b22; color: #b45309;
+        border-radius: 8px; padding: 2px 9px; font-size: 0.76rem;
+        font-weight: 650; margin: 2px 4px 2px 0;
+    }
+    .memory-badge {
+        display: inline-block; background: #dcfce7; color: #166534;
+        border-radius: 6px; padding: 2px 8px; font-size: 0.72rem;
+        font-weight: 600; margin-bottom: 0.5rem;
     }
 </style>
 """,
@@ -131,19 +86,26 @@ st.markdown(
 )
 
 
+# ── session state init ────────────────────────────────────────────────────────
+
 def init_state():
     defaults = {
-        "messages": [],
-        "shortlist": [],
+        "messages": [],          # UI chat history  [{role, content, results, meta}]
+        "shortlist": [],         # current assessment shortlist
         "last_query": "",
         "top_n": 7,
         "top_k": 25,
         "language_filter": "Any",
         "test_type_filter": [],
+        # Unique session ID — used as the key for LangChain message history.
+        # One UUID per browser tab; survives reruns, resets on Clear.
+        "session_id": str(uuid.uuid4()),
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
 
+
+# ── cached resources ──────────────────────────────────────────────────────────
 
 @st.cache_data(show_spinner=False)
 def get_catalog():
@@ -153,6 +115,16 @@ def get_catalog():
 @st.cache_resource(show_spinner=False)
 def get_recommender():
     return AssessmentRecommender(get_catalog(), use_dense=False, use_reranker=False)
+
+
+@st.cache_resource(show_spinner=False)
+def get_conversational_recommender():
+    """
+    Single ConversationalRecommender shared across reruns.
+    The per-session conversation history is NOT stored here — it lives in
+    st.session_state via StreamlitChatMessageHistory, keyed by session_id.
+    """
+    return ConversationalRecommender(get_recommender())
 
 
 def catalog_stats():
@@ -171,28 +143,18 @@ def catalog_stats():
     }
 
 
-def split_terms(text: str) -> List[str]:
-    cleaned = re.sub(r"\b(and|or)\b", ",", text, flags=re.IGNORECASE)
-    cleaned = cleaned.replace("|", ",").replace(";", ",")
-    terms = [term.strip(" .:-") for term in cleaned.split(",")]
-    return [term for term in terms if term]
+# ── filter helpers ────────────────────────────────────────────────────────────
+
+def active_filter_params() -> Optional[dict]:
+    params = {}
+    if st.session_state.language_filter != "Any":
+        params["languages"] = [st.session_state.language_filter]
+    if st.session_state.test_type_filter:
+        params["test_types"] = st.session_state.test_type_filter
+    return params or None
 
 
-def result_text(result: dict) -> str:
-    meta = result["metadata"]
-    parts = [
-        meta.get("assessment_name", ""),
-        result.get("document", ""),
-        " ".join(meta.get("test_types", [])),
-        " ".join(meta.get("languages", [])),
-    ]
-    return " ".join(parts).lower()
-
-
-def contains_term(result: dict, term: str) -> bool:
-    normalized = term.lower().strip()
-    return bool(normalized and normalized in result_text(result))
-
+# ── shortlist helpers (for UI-side drop/add still applied to saved shortlist) ─
 
 def unique_results(results: Iterable[dict]) -> List[dict]:
     seen = set()
@@ -205,124 +167,76 @@ def unique_results(results: Iterable[dict]) -> List[dict]:
     return unique
 
 
-def extract_refinement_terms(prompt: str):
-    drops = []
-    adds = []
-
-    replace_match = REPLACE_RE.search(prompt)
-    if replace_match:
-        drops.extend(split_terms(replace_match.group(1)))
-        adds.extend(split_terms(replace_match.group(2)))
-
-    for match in DROP_RE.finditer(prompt):
-        drops.extend(split_terms(match.group(1)))
-    for match in ADD_RE.finditer(prompt):
-        adds.extend(split_terms(match.group(1)))
-
-    return unique_terms(drops), unique_terms(adds)
+def contains_term(result: dict, term: str) -> bool:
+    meta = result["metadata"]
+    parts = [
+        meta.get("assessment_name", ""),
+        result.get("document", ""),
+        " ".join(meta.get("test_types", [])),
+        " ".join(meta.get("languages", [])),
+    ]
+    text = " ".join(parts).lower()
+    return bool(term.lower().strip() in text)
 
 
-def unique_terms(terms: List[str]) -> List[str]:
-    seen = set()
-    unique = []
-    for term in terms:
-        key = term.lower()
-        if key not in seen:
-            seen.add(key)
-            unique.append(term)
-    return unique
-
-
-def is_refinement(prompt: str) -> bool:
-    drops, adds = extract_refinement_terms(prompt)
-    return bool(drops or adds)
-
-
-def is_small_talk(prompt: str) -> bool:
-    return SMALL_TALK_RE.match(prompt) is not None
-
-
-def active_filter_params() -> Optional[dict]:
-    params = {}
-    if st.session_state.language_filter != "Any":
-        params["languages"] = [st.session_state.language_filter]
-    if st.session_state.test_type_filter:
-        params["test_types"] = st.session_state.test_type_filter
-    return params or None
-
-
-def answer_prompt(prompt: str) -> tuple[str, Optional[List[dict]], dict]:
+def apply_shortlist_refine(drops: List[str], adds: List[str], new_results: Optional[List[dict]]) -> List[dict]:
+    """Apply drop/add instructions to the current shortlist."""
     current = list(st.session_state.shortlist)
 
-    if current and CONFIRMATION_RE.search(prompt):
-        return "Confirmed. Here is the final shortlist.", current, {"kind": "confirmation"}
+    if drops:
+        current = [r for r in current if not any(contains_term(r, t) for t in drops)]
 
-    if is_small_talk(prompt):
-        if current:
-            return (
-                "Hi. I still have the current shortlist ready. Ask me to add or remove skills, or describe a new role.",
-                None,
-                {"kind": "small_talk"},
-            )
-        return (
-            "Hi. Tell me the role, skills, job level, language, or constraints, and I will build an assessment shortlist.",
-            None,
-            {"kind": "small_talk"},
-        )
+    if new_results:
+        current = unique_results([*current, *new_results])[: st.session_state.top_n]
 
-    recommender = get_recommender()
+    return current
 
-    if current and is_refinement(prompt):
-        drops, adds = extract_refinement_terms(prompt)
-        refined = [
-            result
-            for result in current
-            if not any(contains_term(result, term) for term in drops)
-        ]
 
-        added_results = []
-        for term in adds:
-            added_results.extend(
-                recommender.query(
-                    term,
-                    filter_params=active_filter_params(),
-                    top_k=st.session_state.top_k,
-                    top_n=3,
-                )
-            )
+# ── main conversation handler ─────────────────────────────────────────────────
 
-        refined = unique_results([*refined, *added_results])[: st.session_state.top_n]
-        st.session_state.shortlist = refined
-        st.session_state.last_query = f"{st.session_state.last_query} {prompt}".strip()
+def answer_prompt(prompt: str) -> tuple[str, Optional[List[dict]], dict]:
+    """
+    Route the user message through the LLM-powered ConversationalRecommender.
+    Returns (reply_text, results_or_None, meta_dict).
+    """
+    conv = get_conversational_recommender()
 
-        changes = []
-        if drops:
-            changes.append(f"removed {', '.join(drops)}")
-        if adds:
-            changes.append(f"added {', '.join(adds)}")
-        reply = f"I updated the shortlist: {'; '.join(changes)}."
-        return reply, refined, {"kind": "refinement", "drops": drops, "adds": adds}
-
-    results = recommender.query(
-        prompt,
+    response = conv.chat(
+        user_input=prompt,
+        session_id=st.session_state.session_id,   
         filter_params=active_filter_params(),
         top_k=st.session_state.top_k,
         top_n=st.session_state.top_n,
     )
-    st.session_state.shortlist = results
-    st.session_state.last_query = prompt
-    return (
-        "Here is the best matching assessment shortlist from the catalog.",
-        results,
-        {"kind": "recommendation"},
-    )
 
+    action  = response["action"]
+    reply   = response["reply"]
+    results = response.get("results")
+    drops   = response.get("drops", [])
+    adds    = response.get("adds", [])
+
+    if action == "recommend" and isinstance(results, list):
+        st.session_state.shortlist = results
+
+    elif action == "refine":
+        # LLM identified drops/adds; new retrieval results may also come back
+        updated = apply_shortlist_refine(drops, adds, results)
+        st.session_state.shortlist = updated
+        results = updated
+
+    elif action == "confirm":
+        results = list(st.session_state.shortlist)
+
+    return reply, results, {"action": action, "drops": drops, "adds": adds}
+
+
+# ── rendering ─────────────────────────────────────────────────────────────────
 
 def test_type_chips(test_types: List[str]) -> str:
     chips = []
-    for test_type in test_types:
-        label = TEST_TYPE_LABELS.get(test_type, test_type)
-        chips.append(f'<span class="type-chip">{test_type}: {label}</span>')
+    for tt in test_types:
+        label = TEST_TYPE_LABELS.get(tt, tt)
+        chips.append(f'<span class="type-chip">{tt}: {label}</span>')
     return " ".join(chips) if chips else '<span class="type-chip">Not specified</span>'
 
 
@@ -334,8 +248,12 @@ def compact_list(values: List[str], limit: int = 4) -> str:
     return f"{', '.join(values[:limit])} (+{len(values) - limit} more)"
 
 
-def render_results(results: Optional[List[dict]]):
+def render_results(results):
     if results is None:
+        return
+    if isinstance(results, str):
+        # Legacy fallback: results was accidentally a raw LLM string
+        st.markdown(results)
         return
     if not results:
         st.info("No matching assessments found.")
@@ -346,9 +264,9 @@ def render_results(results: Optional[List[dict]]):
     with st.expander(f"View {len(results)} recommendation details", expanded=False):
         for index, result in enumerate(results, 1):
             meta = result["metadata"]
-            name = meta.get("assessment_name", "Unknown")
+            name  = meta.get("assessment_name", "Unknown")
             source = result.get("source", "retrieval")
-            score = result.get("rrf_score", result.get("score", 0.0))
+            score  = result.get("rrf_score", result.get("score", 0.0))
             st.markdown(
                 f"""
 <div class="result-box">
@@ -376,29 +294,35 @@ def append_turn(prompt: str):
 
 
 def reset_conversation():
+    """Clear UI history, shortlist, AND the LangChain message history in session_state."""
     st.session_state.messages = []
     st.session_state.shortlist = []
     st.session_state.last_query = ""
+    new_sid = str(uuid.uuid4())
+    st.session_state.session_id = new_sid
+    lc_key = f"lc_history_{new_sid}"
+    if lc_key in st.session_state:
+        del st.session_state[lc_key]
 
+
+# ── sidebar ───────────────────────────────────────────────────────────────────
 
 def sidebar():
     stats = catalog_stats()
     with st.sidebar:
         st.markdown("## Configuration")
 
-        st.session_state.top_n = st.slider(
-            "Shortlist size",
-            min_value=3,
-            max_value=10,
-            value=st.session_state.top_n,
+        # Memory status badge
+        history_key = f"lc_history_{st.session_state.session_id}"
+        history_msgs = st.session_state.get(history_key, [])
+        turn_count = len(history_msgs) // 2
+        st.markdown(
+            f'<span class="memory-badge"> Memory: {turn_count} turn{"s" if turn_count != 1 else ""} stored</span>',
+            unsafe_allow_html=True,
         )
-        st.session_state.top_k = st.slider(
-            "Retrieve Top-K",
-            min_value=10,
-            max_value=50,
-            value=st.session_state.top_k,
-            step=5,
-        )
+
+        st.session_state.top_n = st.slider("Shortlist size", 3, 10, st.session_state.top_n)
+        st.session_state.top_k = st.slider("Retrieve Top-K", 10, 50, st.session_state.top_k, step=5)
 
         st.divider()
 
@@ -407,64 +331,73 @@ def sidebar():
             "Language",
             language_options,
             index=language_options.index(st.session_state.language_filter)
-            if st.session_state.language_filter in language_options
-            else 0,
+            if st.session_state.language_filter in language_options else 0,
         )
-
         type_options = sorted(stats["test_type_counts"].keys())
         st.session_state.test_type_filter = st.multiselect(
-            "Test types",
-            type_options,
+            "Test types", type_options,
             default=st.session_state.test_type_filter,
             format_func=lambda t: f"{t} - {TEST_TYPE_LABELS.get(t, t)}",
         )
 
         st.divider()
         st.markdown("## Active Shortlist")
-        if st.session_state.shortlist:
+        if st.session_state.shortlist and isinstance(st.session_state.shortlist, list):
             for result in st.session_state.shortlist[:10]:
-                name = result["metadata"].get("assessment_name", "Unknown")
+                if not isinstance(result, dict):
+                    continue
+                name = result.get("metadata", {}).get("assessment_name", "Unknown")
                 st.markdown(f'<span class="shortlist-chip">{name}</span>', unsafe_allow_html=True)
         else:
             st.caption("No shortlist yet.")
 
         st.divider()
-        if st.button("Clear chat", use_container_width=True):
+        if st.button("Clear chat", width='stretch'):
             reset_conversation()
             st.rerun()
-        if st.button("Reset everything", use_container_width=True):
+        if st.button("Reset everything", width='stretch'):
             reset_conversation()
             st.session_state.language_filter = "Any"
             st.session_state.test_type_filter = []
             st.rerun()
 
+        with st.expander("🔍 Session debug", expanded=False):
+            st.caption(f"session_id: `{st.session_state.session_id[:8]}…`")
+            st.caption(f"LangChain history key: `lc_history_{st.session_state.session_id[:8]}…`")
+            if history_msgs:
+                for msg in history_msgs[-6:]:   # show last 3 turns
+                    role = getattr(msg, "type", "?")
+                    content = getattr(msg, "content", str(msg))
+                    st.caption(f"**{role}**: {content[:80]}…")
+
+
+# ── stat cards ────────────────────────────────────────────────────────────────
 
 def render_stats():
     stats = catalog_stats()
     cols = st.columns(4)
     items = [
         ("Assessments", stats["assessments"]),
-        ("Languages", stats["languages"]),
-        ("Test Types", stats["test_types"]),
-        ("Job Levels", stats["job_levels"]),
+        ("Languages",   stats["languages"]),
+        ("Test Types",  stats["test_types"]),
+        ("Job Levels",  stats["job_levels"]),
     ]
     for col, (label, value) in zip(cols, items):
         col.markdown(
-            f"""
-<div class="stat-box">
-    <div class="stat-number">{value}</div>
-    <div class="stat-label">{label}</div>
-</div>
-""",
+            f'<div class="stat-box"><div class="stat-number">{value}</div>'
+            f'<div class="stat-label">{label}</div></div>',
             unsafe_allow_html=True,
         )
 
+
+# ── empty state ───────────────────────────────────────────────────────────────
 
 def render_empty_state():
     st.markdown(
         """
 <div class="hint-box">
-Ask for a role, skills, job level, language, or constraints. Follow up later with changes like
+Describe the role or paste a job description. The assistant will ask a couple of clarifying
+questions, then build a shortlist. Follow up with changes like
 <strong>drop REST and add AWS and Docker</strong>.
 </div>
 """,
@@ -479,10 +412,12 @@ Ask for a role, skills, job level, language, or constraints. Follow up later wit
     ]
     cols = st.columns(2)
     for index, suggestion in enumerate(suggestions):
-        if cols[index % 2].button(suggestion, key=f"suggestion_{index}", use_container_width=True):
+        if cols[index % 2].button(suggestion, key=f"suggestion_{index}", width='stretch'):
             append_turn(suggestion)
             st.rerun()
 
+
+# ── chat tab ──────────────────────────────────────────────────────────────────
 
 def render_chat_tab():
     if not st.session_state.messages:
@@ -491,59 +426,52 @@ def render_chat_tab():
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if message["role"] == "assistant" and "results" in message:
+            if message["role"] == "assistant" and message.get("results"):
                 render_results(message["results"])
 
-    prompt = st.chat_input("Ask for assessments or refine the current shortlist")
+    prompt = st.chat_input("Describe the role, or refine the current shortlist")
     if prompt:
         append_turn(prompt)
         st.rerun()
 
 
+# ── catalog tab ───────────────────────────────────────────────────────────────
+
 def render_catalog_tab():
     stats = catalog_stats()
     st.markdown("### Catalog Overview")
-
     col_types, col_langs = st.columns(2)
     with col_types:
         st.markdown("#### Test Type Coverage")
-        type_rows = [
-            {
-                "Type": key,
-                "Meaning": TEST_TYPE_LABELS.get(key, key),
-                "Assessments": count,
-            }
-            for key, count in stats["test_type_counts"].most_common()
-        ]
-        st.dataframe(pd.DataFrame(type_rows), use_container_width=True, hide_index=True)
-
+        st.dataframe(pd.DataFrame([
+            {"Type": k, "Meaning": TEST_TYPE_LABELS.get(k, k), "Assessments": v}
+            for k, v in stats["test_type_counts"].most_common()
+        ]), width='stretch', hide_index=True)
     with col_langs:
         st.markdown("#### Top Languages")
-        language_rows = [
-            {"Language": key, "Assessments": count}
-            for key, count in stats["language_counts"].most_common(15)
-        ]
-        st.dataframe(pd.DataFrame(language_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([
+            {"Language": k, "Assessments": v}
+            for k, v in stats["language_counts"].most_common(15)
+        ]), width='stretch', hide_index=True)
 
     st.markdown("#### Catalog Search")
-    search = st.text_input("Search assessment names/descriptions", placeholder="Java, OPQ, HIPAA, Excel...")
+    search = st.text_input("Search assessment names/descriptions", placeholder="Java, OPQ, HIPAA, Excel…")
     if search:
         query = search.lower()
         rows = []
         for item in get_catalog():
-            text = f"{item.name} {item.description}".lower()
-            if query in text:
-                rows.append(
-                    {
-                        "Name": item.name,
-                        "Test Type": ", ".join(item.test_types),
-                        "Duration": item.assessment_length or "-",
-                        "Languages": compact_list(item.languages),
-                        "URL": item.url,
-                    }
-                )
-        st.dataframe(pd.DataFrame(rows[:50]), use_container_width=True, hide_index=True)
+            if query in f"{item.name} {item.description}".lower():
+                rows.append({
+                    "Name": item.name,
+                    "Test Type": ", ".join(item.test_types),
+                    "Duration": item.assessment_length or "-",
+                    "Languages": compact_list(item.languages),
+                    "URL": item.url,
+                })
+        st.dataframe(pd.DataFrame(rows[:50]), width='stretch', hide_index=True)
 
+
+# ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
     init_state()
@@ -551,10 +479,9 @@ def main():
 
     st.markdown('<div class="main-header">AssessQ</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="subtitle">Catalog-grounded assessment recommendations with shortlist memory</div>',
+        '<div class="subtitle">LLM-powered assessment recommendations with full conversation memory</div>',
         unsafe_allow_html=True,
     )
-
     render_stats()
     st.markdown("---")
 
