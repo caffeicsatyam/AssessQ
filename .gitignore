@@ -3,3 +3,4 @@
 __pycache__/
 # Virtualenvs
 venv/
+chroma_db/
