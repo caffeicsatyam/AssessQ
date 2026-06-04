@@ -407,7 +407,7 @@ class AssessmentRecommender:
 # ── LLM conversation layer ────────────────────────────────────────────────────
 #
 # Uses RunnableWithMessageHistory + StreamlitChatMessageHistory so that:
-#   1. Full conversation history is injected into every LLM call automatically.
+#   1. conversation history is injected into every LLM call automatically.
 #   2. Messages are stored in st.session_state — survive Streamlit reruns.
 #   3. Switching to Redis/SQL for production is a one-line change (see bottom).
 
@@ -457,20 +457,22 @@ class ConversationalRecommender:
         return self._history_store[session_id]
 
     def _get_llm(self):
-        from langchain_groq import ChatGroq
-        return ChatGroq(
-            model_name="llama-3.3-70b-versatile",
-            temperature=0.0,
-            groq_api_key=GROQ_API_KEY
+        if not hasattr(self, "_llm"):
+            from langchain_groq import ChatGroq
+            self._llm = ChatGroq(
+                model_name="llama-3.3-70b-versatile",
+                temperature=0.0,
+                groq_api_key=GROQ_API_KEY,
         )
+        return self._llm
 
 
     # Max Hitory Stored 
-    MAX_HISTORY_TURNS = 5
+    MAX_HISTORY_TURNS = 10
 
     def chat(self, user_input: str, session_id: str, filter_params: Optional[dict] = None, top_k: int = BM25_TOP_K, top_n: int = RERANK_TOP_N) -> dict:
         history = self._get_history(session_id)
-        recent = history.messages[-(self.MAX_HISTORY_TURNS * 2):]
+        recent = history.messages[-(self.MAX_HISTORY_TURNS * 2 ):]
 
         messages = [
             SystemMessage(content=self.SYSTEM_PROMPT),
@@ -555,11 +557,11 @@ Return ONLY the JSON array, nothing else."""
             if match:
                 valid_indices = set(json.loads(match.group(0)))
                 filtered = [r for i, r in enumerate(results, 1) if i in valid_indices]
-                return filtered if filtered else results   # never return empty if we had results
+                return filtered if filtered else results
         except Exception:
             pass
 
-        return results   # fallback: keep all if validation fails
+        return results   
 
     @staticmethod
     def _parse_llm_output(content: str) -> dict:

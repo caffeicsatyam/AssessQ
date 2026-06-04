@@ -1,0 +1,182 @@
+[
+  {
+    "query": "Senior backend engineer with Core Java and Spring Boot microservices",
+    "expected_assessments": ["Core Java (Advanced Level) (New)", "Spring (New)"],
+    "difficulty": "easy",
+    "notes": "Direct keyword match expected"
+  },
+  {
+    "query": "SQL database developer working with relational schemas and query optimization",
+    "expected_assessments": ["SQL (New)"],
+    "difficulty": "easy",
+    "notes": "Direct keyword match"
+  },
+  {
+    "query": "Cloud engineer deploying containerised workloads on AWS",
+    "expected_assessments": ["Amazon Web Services (AWS) Development (New)", "Docker (New)"],
+    "difficulty": "easy",
+    "notes": "AWS and Docker, both should surface"
+  },
+  {
+    "query": "Frontend developer building single-page applications with Angular",
+    "expected_assessments": ["Angular (New)"],
+    "difficulty": "easy",
+    "notes": "Direct Angular keyword"
+  },
+  {
+    "query": "DevOps engineer working with CI/CD pipelines and container orchestration",
+    "expected_assessments": ["Docker (New)", "Jenkins (New)"],
+    "difficulty": "medium",
+    "notes": "CI/CD should map to Jenkins; containers to Docker"
+  },
+  {
+    "query": "Python data engineer building ETL pipelines and data transformation scripts",
+    "expected_assessments": ["Python (New)"],
+    "difficulty": "easy",
+    "notes": "Python keyword should match"
+  },
+  {
+    "query": "Graduate hire for a high-volume analyst role requiring quick learning and structured reasoning",
+    "expected_assessments": ["SHL Verify Interactive G+"],
+    "difficulty": "medium",
+    "notes": "No technical skills — should route to aptitude test"
+  },
+  {
+    "query": "Customer-facing support role requiring empathy, composure under pressure, and clear communication",
+    "expected_assessments": ["Occupational Personality Questionnaire OPQ32r"],
+    "difficulty": "medium",
+    "notes": "Soft skills / personality — should route to OPQ"
+  },
+  {
+    "query": "A role requiring situational judgement when handling difficult client escalations",
+    "expected_assessments": ["Occupational Personality Questionnaire OPQ32r"],
+    "difficulty": "medium",
+    "notes": "Behavioural / SJT signal"
+  },
+  {
+    "query": "React developer with experience in component architecture and state management",
+    "expected_assessments": ["React (New)"],
+    "difficulty": "easy",
+    "notes": "Direct React keyword"
+  },
+  {
+    "query": "Full stack engineer — owns backend services in Java and reviews Angular PRs",
+    "expected_assessments": ["Core Java (Advanced Level) (New)", "Angular (New)"],
+    "difficulty": "medium",
+    "notes": "Mixed stack, both should appear"
+  },
+  {
+    "query": "A candidate who will lead architectural decisions on distributed systems and mentor junior engineers",
+    "expected_assessments": ["SHL Verify Interactive G+", "Occupational Personality Questionnaire OPQ32r"],
+    "difficulty": "hard",
+    "notes": "No explicit tech stack — leadership/reasoning signal only"
+  },
+  {
+    "query": "Microsoft Office power user supporting a finance department with Excel modelling",
+    "expected_assessments": ["Microsoft Excel (New)"],
+    "difficulty": "easy",
+    "notes": "Excel keyword should match"
+  },
+  {
+    "query": "C# developer building enterprise applications on the .NET framework",
+    "expected_assessments": ["C# (New)", ".NET (New)"],
+    "difficulty": "easy",
+    "notes": ".NET and C# should both surface"
+  },
+  {
+    "query": "Network administrator responsible for routing, switching, and firewall configuration",
+    "expected_assessments": ["Network and Security Concepts (New)"],
+    "difficulty": "medium",
+    "notes": "Networking domain — no exact keyword"
+  },
+  {
+    "query": "A PHP developer maintaining a legacy e-commerce backend",
+    "expected_assessments": ["PHP (New)"],
+    "difficulty": "easy",
+    "notes": "Direct PHP keyword"
+  },
+  {
+    "query": "Scrum master facilitating agile ceremonies and removing blockers for engineering teams",
+    "expected_assessments": ["Agile (New)"],
+    "difficulty": "medium",
+    "notes": "Agile / Scrum — methodology not tool"
+  },
+  {
+    "query": "Mobile developer publishing iOS and Android apps using cross-platform frameworks",
+    "expected_assessments": ["iOS (New)", "Android (New)"],
+    "difficulty": "medium",
+    "notes": "Both platforms should surface"
+  },
+  {
+    "query": "A business analyst who needs to write stored procedures and optimise slow queries in production",
+    "expected_assessments": ["SQL (New)"],
+    "difficulty": "medium",
+    "notes": "SQL implied through business context, not stated directly"
+  },
+  {
+    "query": "A finance role dealing with accounts receivable, vendor payments, and month-end reconciliation",
+    "expected_assessments": ["Accounts Payable and Receivable (New)"],
+    "difficulty": "easy",
+    "notes": "Finance domain keyword"
+  },
+  {
+    "query": "QA engineer writing automated test suites and running regression in a Scrum team",
+    "expected_assessments": ["Selenium (New)", "Agile (New)"],
+    "difficulty": "medium",
+    "notes": "Test automation + agile methodology"
+  },
+  {
+    "query": "A role requiring verbal comprehension, numerical reasoning, and abstract problem solving at graduate level",
+    "expected_assessments": ["SHL Verify Interactive G+"],
+    "difficulty": "medium",
+    "notes": "Aptitude battery described without naming it"
+  },
+  {
+    "query": "Linux system administrator managing server infrastructure and shell scripting",
+    "expected_assessments": ["Linux (New)"],
+    "difficulty": "easy",
+    "notes": "Direct Linux keyword"
+  },
+  {
+    "query": "Kubernetes engineer managing cluster deployments and pod autoscaling in production",
+    "expected_assessments": ["Kubernetes (New)"],
+    "difficulty": "easy",
+    "notes": "Direct Kubernetes keyword"
+  },
+  {
+    "query": "Someone who needs to handle conflict, stay resilient under tight deadlines, and influence without authority",
+    "expected_assessments": ["Occupational Personality Questionnaire OPQ32r"],
+    "difficulty": "hard",
+    "notes": "Pure behavioural description — no tech at all"
+  },
+  {
+    "query": "A NodeJS backend developer building REST APIs consumed by a mobile frontend",
+    "expected_assessments": ["Node.js (New)", "RESTful Web Services (New)"],
+    "difficulty": "medium",
+    "notes": "Node + REST should both surface"
+  },
+  {
+    "query": "A recruiter assessing whether a candidate can think critically and learn new domains quickly",
+    "expected_assessments": ["SHL Verify Interactive G+"],
+    "difficulty": "hard",
+    "notes": "Learning agility framing — indirect aptitude signal"
+  },
+  {
+    "query": "Flight operations specialist requiring knowledge of aerodynamics and aviation procedures",
+    "expected_assessments": ["Flight Mechanic Concepts (New)"],
+    "difficulty": "medium",
+    "notes": "Niche domain — aviation"
+  },
+  {
+    "query": "A generalist IT support technician handling hardware, networking, and basic scripting tasks",
+    "expected_assessments": ["Network and Security Concepts (New)", "Linux (New)"],
+    "difficulty": "hard",
+    "notes": "Broad IT support — multiple domains, no single clear answer"
+  },
+  {
+    "query": "TypeScript developer working in a monorepo with shared component libraries",
+    "expected_assessments": ["TypeScript (New)"],
+    "difficulty": "easy",
+    "notes": "Direct TypeScript keyword"
+  }
+]

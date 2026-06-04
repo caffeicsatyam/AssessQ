@@ -180,16 +180,22 @@ def contains_term(result: dict, term: str) -> bool:
 
 
 def apply_shortlist_refine(drops: List[str], adds: List[str], new_results: Optional[List[dict]]) -> List[dict]:
-    """Apply drop/add instructions to the current shortlist."""
+    """Apply drop/add instructions to the current shortlist.
+
+    Drops are applied AFTER merging new results so that a dropped assessment
+    can never sneak back in through the retrieval set.
+    """
     current = list(st.session_state.shortlist)
 
+    # Merge new retrieval results first (for the "add" side of a refine)
+    if new_results and isinstance(new_results, list):
+        current = unique_results([*current, *new_results])
+
+    # Apply drops AFTER merge so dropped items stay dropped
     if drops:
         current = [r for r in current if not any(contains_term(r, t) for t in drops)]
 
-    if new_results:
-        current = unique_results([*current, *new_results])[: st.session_state.top_n]
-
-    return current
+    return current[: st.session_state.top_n]
 
 
 # ── main conversation handler ─────────────────────────────────────────────────
@@ -294,15 +300,13 @@ def append_turn(prompt: str):
 
 
 def reset_conversation():
-    """Clear UI history, shortlist, AND the LangChain message history in session_state."""
+    old_sid = st.session_state.session_id
     st.session_state.messages = []
     st.session_state.shortlist = []
     st.session_state.last_query = ""
-    new_sid = str(uuid.uuid4())
-    st.session_state.session_id = new_sid
-    lc_key = f"lc_history_{new_sid}"
-    if lc_key in st.session_state:
-        del st.session_state[lc_key]
+    st.session_state.session_id = str(uuid.uuid4())
+    conv = get_conversational_recommender()
+    conv._history_store.pop(old_sid, None)
 
 
 # ── sidebar ───────────────────────────────────────────────────────────────────
@@ -314,8 +318,9 @@ def sidebar():
 
         # Memory status badge
         history_key = f"lc_history_{st.session_state.session_id}"
-        history_msgs = st.session_state.get(history_key, [])
-        turn_count = len(history_msgs) // 2
+        conv = get_conversational_recommender()
+        history = conv._history_store.get(st.session_state.session_id)
+        turn_count = len(history.messages) // 2 if history else 0
         st.markdown(
             f'<span class="memory-badge"> Memory: {turn_count} turn{"s" if turn_count != 1 else ""} stored</span>',
             unsafe_allow_html=True,
