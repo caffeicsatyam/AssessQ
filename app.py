@@ -319,8 +319,8 @@ def sidebar():
         # Memory status badge
         history_key = f"lc_history_{st.session_state.session_id}"
         conv = get_conversational_recommender()
-        history_msg= conv._history_store.get(st.session_state.session_id)
-        turn_count = len(history_msg.messages) // 2 if history_msg else 0
+        history_msgs= conv._history_store.get(st.session_state.session_id)
+        turn_count = len(history_msgs.messages) // 2 if history_msgs else 0
         st.markdown(
             f'<span class="memory-badge"> Memory: {turn_count} turn{"s" if turn_count != 1 else ""} stored</span>',
             unsafe_allow_html=True,
