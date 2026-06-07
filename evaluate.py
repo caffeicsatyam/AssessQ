@@ -6,8 +6,9 @@ What this does
 ──────────────
 1. Uploads your evaluation dataset to LangSmith as a named Dataset.
 2. Runs your RAG pipeline as the "target" function — every retrieval is traced.
-3. Applies four evaluators per query:
+3. Applies five evaluators per query:
      • hit_rate@K      — deterministic: any expected name in top-K?
+     • recall@K        — deterministic: fraction of expected items found in top-K
      • mrr@K           — deterministic: reciprocal rank of first hit
      • ndcg@K          — deterministic: normalised DCG @ K
      • judge_relevance — LLM-as-Judge: semantic relevance via Groq
@@ -18,6 +19,13 @@ Why LLM-as-Judge matters here
 Exact-match metrics fail when catalog name differs slightly from expected.
 The judge scores semantic relevance, so "Core Java (Advanced Level) (New)"
 scores 1.0 even if expected said "Java Advanced".
+
+recall@K vs hit_rate@K
+────────────────────────
+• hit_rate@K  — binary: did we find *any* expected item in top-K? (0 or 1)
+• recall@K    — fractional: what *proportion* of all expected items did we
+                recover in top-K?  recall = |retrieved ∩ expected| / |expected|
+                hit_rate = 1 if recall > 0 else 0
 
 Setup
 ──────
@@ -70,13 +78,38 @@ def _dcg(relevances: List[float]) -> float:
 
 
 def _hit_rate(results: List[dict], expected: Set[str], k: int) -> float:
+    """Binary: 1.0 if any expected item appears in top-K, else 0.0."""
     for r in results[:k]:
         if r["metadata"]["assessment_name"] in expected:
             return 1.0
     return 0.0
 
 
+def _recall(results: List[dict], expected: Set[str], k: int) -> float:
+    """
+    Recall@K: fraction of all expected items recovered in top-K retrieved results.
+
+    recall@K = |{retrieved[:K]} ∩ expected| / |expected|
+
+    • Returns 0.0 when expected is empty (no ground truth to recover).
+    • Unlike hit_rate@K (binary), recall@K penalises partial recovery:
+      finding 2 of 4 expected items scores 0.5, not 1.0.
+    """
+    if not expected:
+        return 0.0
+    retrieved_names = {r["metadata"]["assessment_name"] for r in results[:k]}
+    return len(retrieved_names & expected) / len(expected)
+
+
 def _mrr(results: List[dict], expected: Set[str], k: int) -> float:
+    """
+    Mean Reciprocal Rank@K: reciprocal of the rank of the first relevant result.
+
+    mrr@K = 1 / rank_of_first_hit   (0.0 if no hit in top-K)
+
+    • rank is 1-indexed: first position → 1.0, second → 0.5, third → 0.33 …
+    • Measures how high the *first* relevant item appears; ignores subsequent hits.
+    """
     for rank, r in enumerate(results[:k]):
         if r["metadata"]["assessment_name"] in expected:
             return 1.0 / (rank + 1)
@@ -208,6 +241,15 @@ def build_deterministic_evaluators(k: int) -> list:
         expected = set((reference_outputs or {}).get("expected_assessments", []))
         return {"key": f"hit_rate@{k}", "score": _hit_rate(results, expected, k)}
 
+    def recall_ev(inputs, outputs, reference_outputs=None) -> dict:
+        """
+        recall@K: fraction of all expected assessments recovered in top-K.
+        Penalises partial coverage — finding 1 of 3 expected scores 0.33, not 1.0.
+        """
+        results  = outputs.get("results", [])
+        expected = set((reference_outputs or {}).get("expected_assessments", []))
+        return {"key": f"recall@{k}", "score": _recall(results, expected, k)}
+
     def mrr_ev(inputs, outputs, reference_outputs=None) -> dict:
         results  = outputs.get("results", [])
         expected = set((reference_outputs or {}).get("expected_assessments", []))
@@ -218,7 +260,7 @@ def build_deterministic_evaluators(k: int) -> list:
         expected = set((reference_outputs or {}).get("expected_assessments", []))
         return {"key": f"ndcg@{k}", "score": _ndcg(results, expected, k)}
 
-    return [hit_rate_ev, mrr_ev, ndcg_ev]
+    return [hit_rate_ev, recall_ev, mrr_ev, ndcg_ev]
 
 
 # ── target function factory ───────────────────────────────────────────────────
