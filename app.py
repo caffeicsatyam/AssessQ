@@ -370,7 +370,7 @@ def sidebar():
             st.caption(f"session_id: `{st.session_state.session_id[:8]}…`")
             st.caption(f"LangChain history key: `lc_history_{st.session_state.session_id[:8]}…`")
             if history_msgs:
-                for msg in history_msgs[-6:]:   # show last 3 turns
+                for msg in history_msgs.messages[-6:]:   
                     role = getattr(msg, "type", "?")
                     content = getattr(msg, "content", str(msg))
                     st.caption(f"**{role}**: {content[:80]}…")
