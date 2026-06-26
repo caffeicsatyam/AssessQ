@@ -41,7 +41,12 @@ DENSE_TOP_K = int(os.getenv("DENSE_TOP_K", 20))
 BM25_TOP_K = int(os.getenv("BM25_TOP_K", 20))
 RRF_K = int(os.getenv("RRF_K", 60))
 RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", 5))
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+def get_groq_api_key() -> str:
+    load_dotenv(override=True)
+    return os.getenv("GROQ_API_KEY", "").strip()
+
+
+GROQ_API_KEY = get_groq_api_key()
 
 TEST_TYPE_LABELS = {
     "A": "Ability & Aptitude",
@@ -457,13 +462,21 @@ class ConversationalRecommender:
         return self._history_store[session_id]
 
     def _get_llm(self):
-        if not hasattr(self, "_llm"):
+        groq_api_key = get_groq_api_key()
+        if not groq_api_key:
+            raise ValueError(
+                "GROQ_API_KEY is not set. Add a valid Groq API key to your .env file "
+                "and retry the request."
+            )
+
+        if not hasattr(self, "_llm") or getattr(self, "_llm_api_key", None) != groq_api_key:
             from langchain_groq import ChatGroq
             self._llm = ChatGroq(
                 model_name="llama-3.3-70b-versatile",
                 temperature=0.0,
-                groq_api_key=GROQ_API_KEY,
+                groq_api_key=groq_api_key,
         )
+            self._llm_api_key = groq_api_key
         return self._llm
 
 

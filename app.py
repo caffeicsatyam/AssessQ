@@ -258,7 +258,6 @@ def render_results(results):
     if results is None:
         return
     if isinstance(results, str):
-        # Legacy fallback: results was accidentally a raw LLM string
         st.markdown(results)
         return
     if not results:
@@ -291,9 +290,46 @@ def render_results(results):
             )
 
 
+def format_chat_error(exc: Exception) -> str:
+    error_text = str(exc)
+    status_code = getattr(exc, "status_code", None)
+    error_type = exc.__class__.__name__
+
+    if (
+        error_type == "AuthenticationError"
+        or status_code == 401
+        or "invalid_api_key" in error_text
+        or "Invalid API Key" in error_text
+    ):
+        return (
+            "Groq rejected the configured API key. Update `GROQ_API_KEY` in `.env` "
+            "with a valid key, then try again."
+        )
+
+    if "GROQ_API_KEY is not set" in error_text:
+        return error_text
+
+    return (
+        "I couldn't complete that request because the recommendation engine hit an error. "
+        f"Details: `{error_type}`."
+    )
+
+
 def append_turn(prompt: str):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    reply, results, meta = answer_prompt(prompt)
+    try:
+        reply, results, meta = answer_prompt(prompt)
+    except Exception as exc:
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": format_chat_error(exc),
+                "results": None,
+                "meta": {"action": "error", "error": exc.__class__.__name__},
+            }
+        )
+        return
+
     st.session_state.messages.append(
         {"role": "assistant", "content": reply, "results": results, "meta": meta}
     )

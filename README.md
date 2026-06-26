@@ -2,11 +2,11 @@
 
 # 🎯 AssessQ — Assessment Recommender
 
-*Catalog-first recommender for SHL-style assessment batteries — fast lexical retrieval with optional dense embeddings and cross-encoder reranking.*
+*Catalog-first recommender for assessment batteries — fast lexical retrieval with optional dense embeddings and cross-encoder reranking.*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-orange.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg?style=flat-square)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg?style=flat-square)](https://streamlit.io/)
+[![Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg?style=flat-square)](https://streamlit.io/) 
 [![BM25](https://img.shields.io/badge/Retrieval-BM25-green.svg?style=flat-square)](https://github.com/dorianbrown/rank_bm25)
 [![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple.svg?style=flat-square)](https://www.trychroma.com/)
 
