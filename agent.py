@@ -26,6 +26,7 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.chat_history import InMemoryChatMessageHistory
 import numpy as np
 from dotenv import load_dotenv
+from groq import Groq
 
 # Suppress noisy deprecation warnings from upstream libraries
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain")
@@ -461,7 +462,7 @@ class ConversationalRecommender:
             self._history_store[session_id] = InMemoryChatMessageHistory()
         return self._history_store[session_id]
 
-    def _get_llm(self):
+    def _get_client(self) -> Groq:
         groq_api_key = get_groq_api_key()
         if not groq_api_key:
             raise ValueError(
@@ -469,16 +470,48 @@ class ConversationalRecommender:
                 "and retry the request."
             )
 
-        if not hasattr(self, "_llm") or getattr(self, "_llm_api_key", None) != groq_api_key:
-            from langchain_groq import ChatGroq
-            self._llm = ChatGroq(
-                model_name="llama-3.3-70b-versatile",
-                temperature=0.0,
-                groq_api_key=groq_api_key,
-        )
-            self._llm_api_key = groq_api_key
-        return self._llm
+        if not hasattr(self, "_client") or getattr(self, "_client_api_key", None) != groq_api_key:
+            self._client = Groq(api_key=groq_api_key)
+            self._client_api_key = groq_api_key
+        return self._client
 
+    def _call_llm(self, messages: list) -> str:
+        client = self._get_client()
+        completion = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=messages,
+            temperature=1,
+            max_completion_tokens=2048,
+            top_p=1,
+            reasoning_effort="medium",
+            stream=True,
+            stop=None,
+        )
+
+        chunks = []
+        for chunk in completion:
+            content = chunk.choices[0].delta.content or ""
+            chunks.append(content)
+            print(content, end="")
+        return "".join(chunks)
+
+    @staticmethod
+    def _to_groq_messages(messages: list) -> list:
+        groq_msgs = []
+        for msg in messages:
+            if isinstance(msg, dict):
+                groq_msgs.append(msg)
+                continue
+            role = getattr(msg, "type", "user")
+            if role == "system":
+                groq_role = "system"
+            elif role == "ai":
+                groq_role = "assistant"
+            else:
+                groq_role = "user"
+            content = getattr(msg, "content", str(msg))
+            groq_msgs.append({"role": groq_role, "content": content})
+        return groq_msgs
 
     # Max Hitory Stored 
     MAX_HISTORY_TURNS = 10
@@ -493,14 +526,13 @@ class ConversationalRecommender:
             HumanMessage(content=user_input),
         ]
 
-        llm = self._get_llm()
-        raw = llm.invoke(messages)
+        raw_content = self._call_llm(self._to_groq_messages(messages))
 
         # Save turn to full history (not truncated)
         history.add_user_message(user_input)
-        history.add_ai_message(raw.content)
+        history.add_ai_message(raw_content)
 
-        parsed = self._parse_llm_output(raw.content)
+        parsed = self._parse_llm_output(raw_content)
         
         action = parsed.get("action")
         query = parsed.get("query")
@@ -514,7 +546,7 @@ class ConversationalRecommender:
             )
 
             if results:
-                results = self._validate_results(llm, query, results, recent)
+                results = self._validate_results(query, results, recent)
 
             parsed["results"] = results if results else []
         else:
@@ -543,7 +575,6 @@ Return ONLY the JSON array, nothing else."""
 
     def _validate_results(
         self,
-        llm,
         query: str,
         results: List[dict],
         recent_messages: list,
@@ -565,8 +596,8 @@ Return ONLY the JSON array, nothing else."""
         )
 
         try:
-            validation = llm.invoke(prompt)
-            match = re.search(r"\[[\d\s,]*\]", validation.content)
+            val_content = self._call_llm([{"role": "user", "content": prompt}])
+            match = re.search(r"\[[\d\s,]*\]", val_content)
             if match:
                 valid_indices = set(json.loads(match.group(0)))
                 filtered = [r for i, r in enumerate(results, 1) if i in valid_indices]

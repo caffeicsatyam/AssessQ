@@ -188,13 +188,9 @@ Return ONLY valid JSON, nothing else:
 
 def build_judge(k: int):
     """LLM-as-Judge evaluator factory. Returns a LangSmith-compatible evaluator."""
-    from langchain_groq import ChatGroq
+    from groq import Groq
 
-    llm = ChatGroq(
-        model_name="llama-3.3-70b-versatile",
-        temperature=0.0,
-        groq_api_key=GROQ_API_KEY,
-    )
+    client = Groq(api_key=GROQ_API_KEY)
 
     def judge_relevance(
         inputs: dict,
@@ -216,8 +212,21 @@ def build_judge(k: int):
         )
 
         try:
-            response = llm.invoke(prompt)
-            content  = response.content.strip()
+            completion = client.chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=1,
+                max_completion_tokens=2048,
+                top_p=1,
+                reasoning_effort="medium",
+                stream=True,
+                stop=None,
+            )
+            chunks = []
+            for chunk in completion:
+                content_chunk = chunk.choices[0].delta.content or ""
+                chunks.append(content_chunk)
+            content = "".join(chunks).strip()
             if content.startswith("```"):
                 content = content.split("```")[1]
                 if content.startswith("json"):
