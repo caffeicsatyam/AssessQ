@@ -193,6 +193,32 @@ python agent.py "Senior backend engineer with Core Java, Spring, SQL, AWS, and D
 
 ---
 
+## LangSmith Evaluation Pipeline
+
+`evaluate.py` runs an offline RAG experiment on LangSmith. It uploads the local
+evaluation set as a Dataset, traces the RAG target and LLM judge as named steps,
+and records both retrieval metrics and the LLM-as-a-judge feedback.
+
+Add these values to `.env` (keep this file out of version control):
+
+```env
+LANGSMITH_API_KEY=ls__...
+LANGSMITH_PROJECT=assessq-rag-evals
+GROQ_API_KEY=gsk_...
+```
+
+Then create an experiment:
+
+```bash
+python evaluate.py --upload --dense --rerank --experiment assessq-rag-v1
+```
+
+The experiment records `hit_rate@K`, `recall@K`, `mrr@K`, `ndcg@K`, and
+`judge_relevance`; use the LangSmith project to inspect each target and judge
+trace, score, and explanation.
+
+---
+
 ## CLI Reference
 
 | Flag | Type | Description |

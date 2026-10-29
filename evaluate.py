@@ -33,13 +33,13 @@ pip install langsmith langchain-groq
 
 .env must contain:
     LANGSMITH_API_KEY=ls__...
-    LANGSMITH_PROJECT=assessq-eval
+    LANGSMITH_PROJECT=assessq-rag-evals
     GROQ_API_KEY=gsk_...
 
 Usage
 ──────
   python evaluate.py                          # BM25 only, K=5, local only
-  python evaluate.py --upload                 # same + push to LangSmith
+  python evaluate.py --upload                 # run an experiment in LangSmith
   python evaluate.py --k 10 --upload          # K=10, push to LangSmith
   python evaluate.py --dense --rerank         # full pipeline
   python evaluate.py --compare                # all 4 configs
@@ -61,12 +61,11 @@ load_dotenv()
 
 # ── env ───────────────────────────────────────────────────────────────────────
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY", "")
-LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "assessq-eval")
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "assessq-rag-evals")
 GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
 
 os.environ.setdefault("LANGSMITH_API_KEY",     LANGSMITH_API_KEY)
 os.environ.setdefault("LANGSMITH_PROJECT",     LANGSMITH_PROJECT)
-os.environ.setdefault("LANGCHAIN_TRACING_V2",  "true")
 
 from agent import AssessmentRecommender, load_catalog, DEFAULT_CATALOG_PATH, format_table
 
@@ -189,9 +188,11 @@ Return ONLY valid JSON, nothing else:
 def build_judge(k: int):
     """LLM-as-Judge evaluator factory. Returns a LangSmith-compatible evaluator."""
     from groq import Groq
+    from langsmith import traceable
 
     client = Groq(api_key=GROQ_API_KEY)
 
+    @traceable(name="assessq_llm_relevance_judge", run_type="chain")
     def judge_relevance(
         inputs: dict,
         outputs: dict,
@@ -279,6 +280,9 @@ def build_target(recommender: AssessmentRecommender, k: int):
     LangSmith target function: inputs dict → outputs dict.
     Every call is automatically traced in LangSmith when tracing is enabled.
     """
+    from langsmith import traceable
+
+    @traceable(name="assessq_rag_retrieval", run_type="chain")
     def target(inputs: dict) -> dict:
         query   = inputs["query"]
         results = recommender.query(query, top_n=k)
@@ -301,6 +305,20 @@ def run_evaluation(
     dataset_name: str,
     verbose: bool = False,
 ) -> dict:
+    if upload:
+        if not LANGSMITH_API_KEY:
+            raise ValueError(
+                "LANGSMITH_API_KEY is required for --upload. Add it to .env or the environment."
+            )
+        # Enable tracing only for an explicit LangSmith experiment.
+        os.environ["LANGSMITH_TRACING"] = "true"
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    else:
+        # Avoid unexpectedly exporting local benchmark runs when a developer has
+        # tracing enabled globally for another application.
+        os.environ["LANGSMITH_TRACING"] = "false"
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
     target     = build_target(recommender, k)
     evaluators = build_deterministic_evaluators(k)
 
@@ -324,7 +342,11 @@ def run_evaluation(
             data=dataset_name,
             evaluators=evaluators,
             experiment_prefix=experiment_prefix,
-            metadata={"k": k},
+            metadata={
+                "k": k,
+                "pipeline": "assessq-rag",
+                "judge": "groq/openai-gpt-oss-120b" if GROQ_API_KEY else "disabled",
+            },
             max_concurrency=4,
             client=client,
         )
