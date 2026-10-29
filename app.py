@@ -1,7 +1,7 @@
 import re
 import uuid
 from collections import Counter
-from typing import Iterable, List, Optional
+from typing import List, Optional
 
 import pandas as pd
 import streamlit as st
@@ -13,6 +13,7 @@ from agent import (
     format_table,
     load_catalog,
 )
+from shortlist import apply_shortlist_edit, contains_term, parse_shortlist_edit
 
 # ── regex helpers (still used for lightweight shortlist ops) ──────────────────
 CONFIRMATION_RE = re.compile(
@@ -154,48 +155,43 @@ def active_filter_params() -> Optional[dict]:
     return params or None
 
 
-# ── shortlist helpers (for UI-side drop/add still applied to saved shortlist) ─
+# ── shortlist helpers ─────────────────────────────────────────────────────────
 
-def unique_results(results: Iterable[dict]) -> List[dict]:
-    seen = set()
-    unique = []
-    for result in results:
-        name = result["metadata"].get("assessment_name")
-        if name and name not in seen:
-            seen.add(name)
-            unique.append(result)
-    return unique
-
-
-def contains_term(result: dict, term: str) -> bool:
-    meta = result["metadata"]
-    parts = [
-        meta.get("assessment_name", ""),
-        result.get("document", ""),
-        " ".join(meta.get("test_types", [])),
-        " ".join(meta.get("languages", [])),
-    ]
-    text = " ".join(parts).lower()
-    return bool(term.lower().strip() in text)
+def _edit_reply(before: List[dict], after: List[dict], drops: List[str], adds: List[str]) -> str:
+    before_names = {item["metadata"].get("assessment_name") for item in before}
+    after_names = {item["metadata"].get("assessment_name") for item in after}
+    removed = sorted(before_names - after_names)
+    added = sorted(after_names - before_names)
+    parts = []
+    if removed:
+        parts.append(f"Removed {', '.join(removed)}.")
+    if added:
+        parts.append(f"Added {', '.join(added)}.")
+    already_present = [term for term in adds if any(contains_term(item, term) for item in before)]
+    if already_present:
+        parts.append(f"{' and '.join(already_present).title()} was already in the shortlist.")
+    if not parts:
+        parts.append("The shortlist was unchanged because no matching assessment was found.")
+    return " ".join(parts)
 
 
-def apply_shortlist_refine(drops: List[str], adds: List[str], new_results: Optional[List[dict]]) -> List[dict]:
-    """Apply drop/add instructions to the current shortlist.
-
-    Drops are applied AFTER merging new results so that a dropped assessment
-    can never sneak back in through the retrieval set.
-    """
-    current = list(st.session_state.shortlist)
-
-    # Merge new retrieval results first (for the "add" side of a refine)
-    if new_results and isinstance(new_results, list):
-        current = unique_results([*current, *new_results])
-
-    # Apply drops AFTER merge so dropped items stay dropped
-    if drops:
-        current = [r for r in current if not any(contains_term(r, t) for t in drops)]
-
-    return current[: st.session_state.top_n]
+def _apply_direct_shortlist_edit(drops: List[str], adds: List[str]) -> tuple[str, List[dict]]:
+    """Execute an unambiguous list command without relying on LLM intent routing."""
+    before = list(st.session_state.shortlist)
+    retrieved = []
+    for term in adds:
+        if any(contains_term(item, term) for item in before):
+            continue
+        matches = get_recommender().query(
+            query=term,
+            filter_params=active_filter_params(),
+            top_k=st.session_state.top_k,
+            top_n=st.session_state.top_k,
+        )
+        retrieved.extend(matches)
+    updated = apply_shortlist_edit(before, drops, adds, retrieved, st.session_state.top_n)
+    st.session_state.shortlist = updated
+    return _edit_reply(before, updated, drops, adds), updated
 
 
 # ── main conversation handler ─────────────────────────────────────────────────
@@ -205,6 +201,15 @@ def answer_prompt(prompt: str) -> tuple[str, Optional[List[dict]], dict]:
     Route the user message through the LLM-powered ConversationalRecommender.
     Returns (reply_text, results_or_None, meta_dict).
     """
+    direct_drops, direct_adds = parse_shortlist_edit(prompt)
+    if st.session_state.shortlist and (direct_drops or direct_adds):
+        reply, results = _apply_direct_shortlist_edit(direct_drops, direct_adds)
+        meta = {"action": "refine", "drops": direct_drops, "adds": direct_adds}
+        get_conversational_recommender().record_local_turn(
+            st.session_state.session_id, prompt, {**meta, "reply": reply, "query": None}
+        )
+        return reply, results, meta
+
     conv = get_conversational_recommender()
 
     response = conv.chat(
@@ -226,7 +231,9 @@ def answer_prompt(prompt: str) -> tuple[str, Optional[List[dict]], dict]:
 
     elif action == "refine":
         # LLM identified drops/adds; new retrieval results may also come back
-        updated = apply_shortlist_refine(drops, adds, results)
+        updated = apply_shortlist_edit(
+            st.session_state.shortlist, drops, adds, results, st.session_state.top_n
+        )
         st.session_state.shortlist = updated
         results = updated
 

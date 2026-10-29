@@ -1,16 +1,3 @@
-"""
-agent.py — AssessQ backend
-RAG pipeline (BM25 + optional dense) + LLM-powered conversational layer.
-
-Conversation storage strategy
-──────────────────────────────
-• StreamlitChatMessageHistory  — stores messages directly in st.session_state so
-  they survive Streamlit reruns automatically (no separate store dict needed).
-• RunnableWithMessageHistory   — wraps the LLM chain and injects the history into
-  every prompt automatically, keyed by session_id.
-• For production / multi-user  — swap StreamlitChatMessageHistory for
-  RedisChatMessageHistory or SQLChatMessageHistory (one-line change, see bottom).
-"""
 
 import argparse
 import json
@@ -417,6 +404,15 @@ class AssessmentRecommender:
 #   2. Messages are stored in st.session_state — survive Streamlit reruns.
 #   3. Switching to Redis/SQL for production is a one-line change (see bottom).
 
+@dataclass(frozen=True)
+class QueryIntent:
+    """The retrieval-relevant facts separated from a conversational turn."""
+    action: str
+    role: Optional[str]
+    seniority: Optional[str]
+    skills: List[str]
+    retrieval_query: Optional[str]
+
 class ConversationalRecommender:
     """
     Wraps AssessmentRecommender with an LLM that:
@@ -434,9 +430,12 @@ class ConversationalRecommender:
 
     ```json
     {{
-    "action": "recommend" | "clarify" | "refine" | "confirm",
+    "action": "recommend" | "clarify" | "refine" | "confirm" | "answer",
     "reply": "<your conversational reply to show the user>",
-    "query": "<enriched search query combining all context so far, or null>",
+    "role": "<normalized role title from the full conversation, or null>",
+    "seniority": "<normalized seniority from the full conversation, or null>",
+    "skills": ["<specific skills or focus areas from the full conversation>"],
+    "query": "<retrieval terms only; no conversational filler, or null>",
     "drops": ["<term to remove>"],
     "adds": ["<term to add>"]
     }}
@@ -447,7 +446,12 @@ class ConversationalRecommender:
     - action=recommend → you have enough context; query is the full enriched retrieval string.
     - action=refine   → user asked to drop/add/replace something; populate drops and/or adds.
     - action=confirm  → user confirmed the shortlist as final.
-    - Always build the query by combining ALL relevant details from the entire conversation, not just the latest message.
+    - action=answer   → user asked an informational follow-up (for example, a definition or
+      comparison). Answer it directly. Do not retrieve or return a new recommendation table.
+    - Decompose the request before retrieving: identify the role, seniority, and skill/focus constraints.
+      Keep query to those retrieval facts only; never include clarification text, explanations, or unrelated terms.
+    - When the user says "all" after being asked about focus areas, resolve it to every focus area named in
+      that question and preserve the role and seniority from prior turns.
     - Never invent assessment names. Only retrieve from the catalog.
     - Keep replies concise and professional.
     """
@@ -461,6 +465,12 @@ class ConversationalRecommender:
         if session_id not in self._history_store:
             self._history_store[session_id] = InMemoryChatMessageHistory()
         return self._history_store[session_id]
+
+    def record_local_turn(self, session_id: str, user_input: str, response: dict) -> None:
+        """Keep deterministic UI-side edits available to later LLM turns."""
+        history = self._get_history(session_id)
+        history.add_user_message(user_input)
+        history.add_ai_message(json.dumps(response))
 
     def _get_client(self) -> Groq:
         groq_api_key = get_groq_api_key()
@@ -516,6 +526,36 @@ class ConversationalRecommender:
     # Max Hitory Stored 
     MAX_HISTORY_TURNS = 10
 
+    @staticmethod
+    def _is_definition_request(user_input: str) -> bool:
+        return bool(re.search(
+            r"(?:^\s*(?:what\s+is|what['’]s|define|explain)|\bbrief\s+definition\b)",
+            user_input,
+            re.IGNORECASE,
+        ))
+
+    @staticmethod
+    def _decompose_intent(parsed: dict, user_input: str) -> QueryIntent:
+        """Convert model output into the small contract used by retrieval."""
+        action = parsed.get("action", "clarify")
+        if ConversationalRecommender._is_definition_request(user_input):
+            action = "answer"
+        skills = parsed.get("skills") or []
+        if not isinstance(skills, list):
+            skills = []
+        skills = [str(skill).strip() for skill in skills if str(skill).strip()]
+        role = (parsed.get("role") or "").strip() or None
+        seniority = (parsed.get("seniority") or "").strip() or None
+        raw_query = (parsed.get("query") or "").strip()
+        retrieval_terms = [term for term in [role, seniority, *skills] if term]
+        return QueryIntent(
+            action=action,
+            role=role,
+            seniority=seniority,
+            skills=skills,
+            retrieval_query=" ".join(retrieval_terms) if retrieval_terms else (raw_query or None),
+        )
+
     def chat(self, user_input: str, session_id: str, filter_params: Optional[dict] = None, top_k: int = BM25_TOP_K, top_n: int = RERANK_TOP_N) -> dict:
         history = self._get_history(session_id)
         recent = history.messages[-(self.MAX_HISTORY_TURNS * 2 ):]
@@ -534,15 +574,18 @@ class ConversationalRecommender:
 
         parsed = self._parse_llm_output(raw_content)
         
-        action = parsed.get("action")
-        query = parsed.get("query")
+        intent = self._decompose_intent(parsed, user_input)
+        action = intent.action
+        query = intent.retrieval_query
+        parsed["action"] = action
+        parsed["query"] = query
         
         if action in ("recommend", "refine") and query:
             results = self.recommender.query(
                 query=query,
                 filter_params=filter_params,
                 top_k=top_k,
-                top_n=top_n
+                top_n=top_n,
             )
 
             if results:
